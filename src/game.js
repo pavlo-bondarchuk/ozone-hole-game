@@ -156,11 +156,62 @@ const ground = new THREE.Mesh(groundGeometry, groundMaterial);
 ground.receiveShadow = true;
 world.add(ground);
 
-const grid = new THREE.GridHelper(worldSize, 41, 0x335166, 0x183043);
-grid.position.y = 0.03;
-grid.material.opacity = 0.16;
-grid.material.transparent = true;
-world.add(grid);
+const roadMaterial = new THREE.MeshStandardMaterial({
+  color: 0x485057,
+  roughness: 0.96,
+  metalness: 0.02
+});
+
+const roadLineMaterial = new THREE.MeshBasicMaterial({
+  color: 0xd8d2ad,
+  transparent: true,
+  opacity: 0.42
+});
+
+function createRoad(x, z, width, depth, horizontal = true) {
+  const road = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.08, depth),
+    roadMaterial
+  );
+
+  road.position.set(x, 0.08, z);
+  road.receiveShadow = true;
+  world.add(road);
+
+  const stripeCount = horizontal
+    ? Math.max(2, Math.floor(width / 4))
+    : Math.max(2, Math.floor(depth / 4));
+
+  for (let i = 0; i < stripeCount; i += 1) {
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        horizontal ? 1.2 : 0.08,
+        0.02,
+        horizontal ? 0.08 : 1.2
+      ),
+      roadLineMaterial
+    );
+
+    const t = stripeCount === 1 ? 0.5 : i / (stripeCount - 1);
+
+    stripe.position.set(
+      horizontal ? x - width * 0.42 + t * width * 0.84 : x,
+      0.14,
+      horizontal ? z : z - depth * 0.42 + t * depth * 0.84
+    );
+
+    world.add(stripe);
+  }
+}
+
+[
+  [0, -18, 72, 3.2, true],
+  [0, 2, 72, 3.6, true],
+  [0, 20, 72, 3.2, true],
+  [-22, 0, 3.2, 72, false],
+  [0, 0, 3.6, 72, false],
+  [23, 0, 3.2, 72, false]
+].forEach((data) => createRoad(...data));
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min);
@@ -253,17 +304,52 @@ function createBuilding(x, z, width, depth, height, color) {
   world.add(mesh);
 }
 
-for (let i = 0; i < 28; i += 1) {
+function createBlock(cx, cz, cols, rows, spacingX, spacingZ, scale = 1) {
+  for (let ix = 0; ix < cols; ix += 1) {
+    for (let iz = 0; iz < rows; iz += 1) {
+      const x =
+        cx +
+        (ix - (cols - 1) / 2) * spacingX +
+        randomRange(-0.45, 0.45);
+
+      const z =
+        cz +
+        (iz - (rows - 1) / 2) * spacingZ +
+        randomRange(-0.45, 0.45);
+
+      createBuilding(
+        x,
+        z,
+        randomRange(1.7, 3.4) * scale,
+        randomRange(1.7, 3.2) * scale,
+        randomRange(2.6, 7.4) * scale,
+        new THREE.Color().setHSL(
+          randomRange(0.055, 0.11),
+          randomRange(0.1, 0.22),
+          randomRange(0.44, 0.62)
+        )
+      );
+    }
+  }
+}
+
+createBlock(-11, -8, 3, 2, 5.2, 5.2, 0.92);
+createBlock(11, -8, 3, 2, 5, 5.2, 1);
+createBlock(-11, 11, 3, 2, 5.1, 5, 0.95);
+createBlock(11, 11, 3, 2, 5.1, 5, 1.02);
+createBlock(30, -11, 2, 3, 5.5, 5.4, 1.08);
+
+for (let i = 0; i < 10; i += 1) {
   createBuilding(
-    randomRange(-halfWorld + 5, halfWorld - 5),
-    randomRange(-halfWorld + 5, halfWorld - 5),
-    randomRange(1.6, 4),
-    randomRange(1.6, 4),
-    randomRange(2.5, 8),
+    randomRange(-36, -27),
+    randomRange(22, 34),
+    randomRange(1.8, 3.2),
+    randomRange(1.8, 3.2),
+    randomRange(2, 4.5),
     new THREE.Color().setHSL(
-      randomRange(0.05, 0.12),
-      randomRange(0.12, 0.24),
-      randomRange(0.42, 0.63)
+      randomRange(0.06, 0.12),
+      randomRange(0.08, 0.18),
+      randomRange(0.5, 0.68)
     )
   );
 }
@@ -311,11 +397,12 @@ function createField(x, z, width, depth) {
 }
 
 [
-  [-22, 4, 8, 5],
-  [-12, -8, 7, 4],
-  [16, -13, 9, 5],
-  [21, 22, 8, 5],
-  [-8, 24, 9, 4]
+  [-31, 7, 8, 5],
+  [-31, -8, 7, 4],
+  [31, 7, 9, 5],
+  [31, 23, 8, 5],
+  [-12, 31, 9, 4],
+  [8, 31, 8, 4]
 ].forEach((data) => createField(...data));
 
 function createLake(x, z, radiusX, radiusZ) {
@@ -341,8 +428,8 @@ function createLake(x, z, radiusX, radiusZ) {
   world.add(lake);
 }
 
-createLake(13, 25, 5.5, 3.1);
-createLake(-25, -14, 4.2, 2.6);
+createLake(14, 31, 5.2, 2.8);
+createLake(-32, -27, 4.2, 2.4);
 
 function createLabel(text) {
   const canvas = document.createElement('canvas');
