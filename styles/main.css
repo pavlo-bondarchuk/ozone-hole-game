@@ -193,6 +193,11 @@ button {
   box-shadow: 0 0 12px #ff725f;
 }
 
+.dot.locked {
+  background: #9d72ff;
+  box-shadow: 0 0 12px #9d72ff;
+}
+
 .dot.uv {
   background: #fff16b;
   box-shadow: 0 0 12px #fff16b;
