@@ -77,6 +77,10 @@ const lakes = [];
 const vehicles = [];
 const pedestrians = [];
 const smokePuffs = [];
+const regionalTargets = [];
+const regionalLayer = new THREE.Group();
+regionalLayer.visible = false;
+scene.add(regionalLayer);
 const keys = new Set();
 const pointer = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
@@ -709,6 +713,64 @@ function createIndustrialComplex(group, scale) {
   }
 }
 
+function createRegionalTarget(x, z, label, radius, strength, color) {
+  const group = new THREE.Group();
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.8, radius, 1.1, 24),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.72,
+      metalness: 0.18
+    })
+  );
+
+  base.position.y = 0.55;
+  base.castShadow = true;
+
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 0.3, 18, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0xff876d,
+      emissive: 0xff3e2e,
+      emissiveIntensity: 4,
+      roughness: 0.2
+    })
+  );
+
+  core.position.y = 1.5;
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(radius * 1.05, radius * 1.45, 40),
+    new THREE.MeshBasicMaterial({
+      color: 0xff7f68,
+      transparent: true,
+      opacity: 0.32,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.08;
+
+  const labelSprite = createLabel(label);
+  labelSprite.position.y = 3.2;
+
+  group.add(base, core, ring, labelSprite);
+  group.position.set(x, 0, z);
+  group.userData.label = label;
+  group.userData.radius = radius;
+  group.userData.strength = strength;
+  group.userData.alive = true;
+  group.userData.requiredStage = 4;
+  group.userData.core = core;
+  group.userData.ring = ring;
+
+  regionalTargets.push(group);
+  regionalLayer.add(group);
+}
+
 const emitterTypes = {
   canister: {
     label: 'CFC canister',
@@ -831,6 +893,11 @@ function createEmitter(x, z, typeKey, scale = 1) {
   [3, 19, 'storage', 0.86],
   [18, 4, 'factory', 0.8]
 ].forEach((data) => createEmitter(...data));
+
+createRegionalTarget(-28, 30, 'Regional refrigeration hub', 2.2, 2.4, 0x6f7f89);
+createRegionalTarget(31, -30, 'Chemical logistics terminal', 2.5, 2.8, 0x7f6f68);
+createRegionalTarget(33, 31, 'Industrial megazone', 3.1, 3.5, 0x666a70);
+
 
 const atmosphereLayer = new THREE.Mesh(
   new THREE.CircleGeometry(38, 96),
@@ -1152,8 +1219,13 @@ function updateSession(delta) {
     state.score += state.stage * 250;
   }
 
+  regionalLayer.visible = state.stage >= 4;
+
+  const aliveRegionalTargets =
+    regionalTargets.filter((target) => target.userData.alive).length;
+
   if (
-    state.emittersDestroyed === emitters.length ||
+    (state.emittersDestroyed === emitters.length && aliveRegionalTargets === 0) ||
     state.totalDamage >= 0.92
   ) {
     state.finished = true;
@@ -1689,12 +1761,57 @@ function updateTraffic(delta) {
   }
 }
 
+function updateRegionalTargets(delta) {
+  if (!regionalLayer.visible) return;
+
+  for (const target of regionalTargets) {
+    if (!target.userData.alive) continue;
+
+    target.rotation.y += delta * 0.35;
+
+    const distance = Math.hypot(
+      target.position.x - holePosition.x,
+      target.position.z - holePosition.z
+    );
+
+    const canAbsorb =
+      state.stage >= target.userData.requiredStage &&
+      state.holeRadius >= 8.5;
+
+    target.userData.ring.material.color.set(
+      canAbsorb ? 0xff7860 : 0x9f82ff
+    );
+
+    target.userData.core.material.emissive.set(
+      canAbsorb ? 0xff3e2e : 0x5730a8
+    );
+
+    if (
+      canAbsorb &&
+      distance < state.holeRadius * 0.82 + target.userData.radius
+    ) {
+      target.userData.alive = false;
+      target.visible = false;
+
+      state.holeRadius += 0.7 + target.userData.strength * 0.18;
+      state.uvRadius += 1 + target.userData.strength * 0.32;
+      state.uvIntensity = Math.min(
+        1,
+        state.uvIntensity + 0.06 + target.userData.strength * 0.02
+      );
+      state.score += Math.round(850 * target.userData.strength);
+
+      updateHoleVisuals();
+    }
+  }
+}
+
 function updateHud() {
   const stages = {
     1: ['Stage 1 · Local breach', 'Absorb canisters and old AC units.'],
     2: ['Stage 2 · District damage', 'Cold storage facilities are now within reach.'],
     3: ['Stage 3 · Urban collapse', 'Factories can now be absorbed.'],
-    4: ['Stage 4 · Regional event', 'Industrial complexes are vulnerable.']
+    4: ['Stage 4 · Regional event', 'Regional industrial targets are now exposed.']
   };
 
   const stage = stages[state.stage];
@@ -1856,31 +1973,35 @@ function moveHole(delta) {
 }
 
 function updateCamera() {
+  const stageZoom = {
+    1: { height: 42, depth: 50, follow: 0.18 },
+    2: { height: 50, depth: 59, follow: 0.15 },
+    3: { height: 62, depth: 72, follow: 0.12 },
+    4: { height: 78, depth: 90, follow: 0.08 }
+  };
+
+  const config = stageZoom[state.stage];
+
   const target = new THREE.Vector3(
-    hole.position.x * 0.26,
+    hole.position.x * config.follow,
     0,
-    hole.position.z * 0.26
+    hole.position.z * config.follow
   );
 
-  const zoomOut = Math.min(
-    18,
-    Math.max(
-      0,
-      state.holeRadius - 4.4
-    ) * 0.78
-  );
+  const extraZoom =
+    Math.max(0, state.holeRadius - 4.4) * 0.65;
 
   const desired = new THREE.Vector3(
-    hole.position.x * 0.16,
-    42 + zoomOut,
-    50 +
-      zoomOut * 0.78 +
-      hole.position.z * 0.1
+    hole.position.x * config.follow * 0.7,
+    config.height + extraZoom,
+    config.depth +
+      extraZoom * 0.7 +
+      hole.position.z * 0.05
   );
 
   camera.position.lerp(
     desired,
-    0.025
+    0.022
   );
 
   camera.lookAt(target);
@@ -1962,6 +2083,7 @@ function animate() {
   updatePedestrians(delta);
   updateBuildingDamageEffects(delta);
   updateSmoke(delta);
+  updateRegionalTargets(delta);
   updateSession(delta);
   updateCamera();
   updateHud();
