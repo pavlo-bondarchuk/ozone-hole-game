@@ -79,6 +79,7 @@ const pedestrians = [];
 const smokePuffs = [];
 const regionalTargets = [];
 const continentalTargets = [];
+const planetaryTargets = [];
 
 const regionalLayer = new THREE.Group();
 regionalLayer.visible = false;
@@ -118,6 +119,107 @@ const coastalWater = new THREE.Mesh(
 coastalWater.rotation.x = -Math.PI / 2;
 coastalWater.position.y = -0.18;
 continentalLayer.add(coastalWater);
+
+const earthLayer = new THREE.Group();
+earthLayer.visible = false;
+scene.add(earthLayer);
+
+const earthRadius = 28;
+
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(earthRadius, 72, 48),
+  new THREE.MeshStandardMaterial({
+    color: 0x2d78a3,
+    roughness: 0.88,
+    metalness: 0.02
+  })
+);
+
+earth.receiveShadow = true;
+earthLayer.add(earth);
+
+const earthAtmosphere = new THREE.Mesh(
+  new THREE.SphereGeometry(earthRadius * 1.035, 72, 48),
+  new THREE.MeshBasicMaterial({
+    color: 0x78d2ff,
+    transparent: true,
+    opacity: 0.13,
+    side: THREE.BackSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+);
+
+earthLayer.add(earthAtmosphere);
+
+function latLonToVector(lat, lon, radius = earthRadius) {
+  const phi = THREE.MathUtils.degToRad(90 - lat);
+  const theta = THREE.MathUtils.degToRad(lon + 180);
+
+  return new THREE.Vector3(
+    -radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta)
+  );
+}
+
+function addLandPatch(lat, lon, scaleX, scaleY, rotation = 0) {
+  const position = latLonToVector(lat, lon, earthRadius * 1.006);
+
+  const patch = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 28),
+    new THREE.MeshStandardMaterial({
+      color: 0x5b8749,
+      roughness: 0.94,
+      metalness: 0,
+      side: THREE.DoubleSide
+    })
+  );
+
+  patch.position.copy(position);
+  patch.lookAt(position.clone().multiplyScalar(2));
+  patch.rotateZ(rotation);
+  patch.scale.set(scaleX, scaleY, 1);
+
+  earthLayer.add(patch);
+}
+
+[
+  [48, 20, 4.8, 2.5, 0.2],
+  [22, 78, 4.2, 2.8, -0.3],
+  [-18, 25, 3.8, 4.6, 0.12],
+  [42, -102, 4.8, 3.1, -0.18],
+  [-18, -61, 3.2, 5.2, 0.25],
+  [-25, 135, 3.1, 2.2, 0.08]
+].forEach((data) => addLandPatch(...data));
+
+const globalBreach = new THREE.Group();
+
+const globalBreachCore = new THREE.Mesh(
+  new THREE.CircleGeometry(1, 64),
+  new THREE.MeshBasicMaterial({
+    color: 0x090d16,
+    transparent: true,
+    opacity: 0.82,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  })
+);
+
+const globalBreachGlow = new THREE.Mesh(
+  new THREE.RingGeometry(0.72, 1.18, 64),
+  new THREE.MeshBasicMaterial({
+    color: 0x7fd9ff,
+    transparent: true,
+    opacity: 0.48,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+);
+
+globalBreach.add(globalBreachCore, globalBreachGlow);
+earthLayer.add(globalBreach);
 const keys = new Set();
 const pointer = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
@@ -864,6 +966,47 @@ function createContinentalTarget(x, z, label, radius, strength, color) {
   continentalLayer.add(group);
 }
 
+function createPlanetaryTarget(lat, lon, label, strength) {
+  const group = new THREE.Group();
+  const position = latLonToVector(lat, lon, earthRadius * 1.06);
+
+  const marker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.9, 16, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0xff7c62,
+      emissive: 0xff3525,
+      emissiveIntensity: 4.8,
+      roughness: 0.2
+    })
+  );
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(1.15, 1.55, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xff8068,
+      transparent: true,
+      opacity: 0.52,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+
+  ring.lookAt(position.clone().multiplyScalar(2));
+
+  group.add(marker, ring);
+  group.position.copy(position);
+  group.userData.lat = lat;
+  group.userData.lon = lon;
+  group.userData.label = label;
+  group.userData.strength = strength;
+  group.userData.alive = true;
+  group.userData.marker = marker;
+  group.userData.ring = ring;
+
+  planetaryTargets.push(group);
+  earthLayer.add(group);
+}
+
 const emitterTypes = {
   canister: {
     label: 'CFC canister',
@@ -995,6 +1138,12 @@ createContinentalTarget(-34, -28, 'Northern megacity cluster', 3.4, 4.2, 0x656c7
 createContinentalTarget(2, -34, 'Continental cooling corridor', 3.7, 4.8, 0x5e737c);
 createContinentalTarget(34, 7, 'Heavy industry belt', 4, 5.2, 0x70665f);
 createContinentalTarget(-28, 22, 'Aerosol production network', 3.6, 4.6, 0x756b62);
+
+createPlanetaryTarget(55, 35, 'Northern industrial belt', 6.2);
+createPlanetaryTarget(28, 105, 'East Asia megacluster', 6.8);
+createPlanetaryTarget(36, -95, 'North American cooling network', 6.4);
+createPlanetaryTarget(-24, 28, 'Southern aerosol corridor', 5.8);
+
 
 
 const atmosphereLayer = new THREE.Mesh(
@@ -1303,7 +1452,9 @@ function updateSession(delta) {
 
   const previousStage = state.stage;
 
-  if (state.holeRadius >= 11.2) {
+  if (state.holeRadius >= 15.2) {
+    state.stage = 6;
+  } else if (state.holeRadius >= 11.2) {
     state.stage = 5;
   } else if (state.holeRadius >= 8.5) {
     state.stage = 4;
@@ -1320,13 +1471,24 @@ function updateSession(delta) {
   }
 
   regionalLayer.visible = state.stage >= 4 && state.stage < 5;
-  continentalLayer.visible = state.stage >= 5;
+  continentalLayer.visible = state.stage >= 5 && state.stage < 6;
+  earthLayer.visible = state.stage >= 6;
+  world.visible = state.stage < 6;
+  hole.visible = state.stage < 6;
+  atmosphereLayer.visible = state.stage < 6;
+  atmosphereRing.visible = state.stage < 6;
+  sky.visible = state.stage < 6;
+
+  scene.background.set(state.stage >= 6 ? 0x02050b : 0x6ca8c9);
 
   const aliveRegionalTargets =
     regionalTargets.filter((target) => target.userData.alive).length;
 
   const aliveContinentalTargets =
     continentalTargets.filter((target) => target.userData.alive).length;
+
+  const alivePlanetaryTargets =
+    planetaryTargets.filter((target) => target.userData.alive).length;
 
   const localDetailVisible = state.stage < 5;
 
@@ -1342,7 +1504,8 @@ function updateSession(delta) {
     (
       state.emittersDestroyed === emitters.length &&
       aliveRegionalTargets === 0 &&
-      aliveContinentalTargets === 0
+      aliveContinentalTargets === 0 &&
+      alivePlanetaryTargets === 0
     ) ||
     state.totalDamage >= 0.96
   ) {
@@ -1969,13 +2132,95 @@ function updateContinentalTargets(delta) {
   }
 }
 
+function updateEarthStage(delta) {
+  if (!earthLayer.visible) return;
+
+  earth.rotation.y += delta * 0.04;
+  earthAtmosphere.rotation.y -= delta * 0.025;
+
+  const lon = THREE.MathUtils.mapLinear(
+    holePosition.x,
+    -halfWorld,
+    halfWorld,
+    -180,
+    180
+  );
+
+  const lat = THREE.MathUtils.mapLinear(
+    holePosition.z,
+    -halfWorld,
+    halfWorld,
+    70,
+    -70
+  );
+
+  const breachPosition = latLonToVector(
+    lat,
+    lon,
+    earthRadius * 1.045
+  );
+
+  globalBreach.position.copy(breachPosition);
+  globalBreach.lookAt(breachPosition.clone().multiplyScalar(2));
+
+  const breachScale = THREE.MathUtils.clamp(
+    state.holeRadius * 0.22,
+    3.1,
+    6.8
+  );
+
+  globalBreach.scale.setScalar(breachScale);
+  globalBreachGlow.rotation.z -= delta * 0.18;
+
+  for (const target of planetaryTargets) {
+    if (!target.userData.alive) continue;
+
+    target.userData.ring.rotation.z += delta * 0.35;
+
+    const latDelta = Math.abs(lat - target.userData.lat);
+    const lonRaw = Math.abs(lon - target.userData.lon);
+    const lonDelta = Math.min(lonRaw, 360 - lonRaw);
+
+    const distance = Math.hypot(
+      latDelta,
+      lonDelta * Math.cos(THREE.MathUtils.degToRad(lat))
+    );
+
+    const canAbsorb = state.holeRadius >= 15.2;
+
+    target.userData.ring.material.color.set(
+      canAbsorb ? 0xff765d : 0x9d7dff
+    );
+
+    target.userData.marker.material.emissive.set(
+      canAbsorb ? 0xff3525 : 0x5130a0
+    );
+
+    if (canAbsorb && distance < 24) {
+      target.userData.alive = false;
+      target.visible = false;
+
+      state.holeRadius += 1.8 + target.userData.strength * 0.22;
+      state.uvRadius += 2.2 + target.userData.strength * 0.42;
+      state.uvIntensity = Math.min(
+        1,
+        state.uvIntensity + 0.09 + target.userData.strength * 0.015
+      );
+      state.score += Math.round(3200 * target.userData.strength);
+
+      updateHoleVisuals();
+    }
+  }
+}
+
 function updateHud() {
   const stages = {
     1: ['Stage 1 · Local breach', 'Absorb canisters and old AC units.'],
     2: ['Stage 2 · District damage', 'Cold storage facilities are now within reach.'],
     3: ['Stage 3 · Urban collapse', 'Factories can now be absorbed.'],
     4: ['Stage 4 · Regional event', 'Regional industrial targets are now exposed.'],
-    5: ['Stage 5 · Continental collapse', 'Megacity and industrial networks are now vulnerable.']
+    5: ['Stage 5 · Continental collapse', 'Megacity and industrial networks are now vulnerable.'],
+    6: ['Stage 6 · Planetary breach', 'Move the global ozone breach across Earth and absorb planetary clusters.']
   };
 
   const stage = stages[state.stage];
@@ -2142,10 +2387,23 @@ function updateCamera() {
     2: { height: 50, depth: 59, follow: 0.15 },
     3: { height: 62, depth: 72, follow: 0.12 },
     4: { height: 78, depth: 90, follow: 0.08 },
-    5: { height: 112, depth: 126, follow: 0.045 }
+    5: { height: 112, depth: 126, follow: 0.045 },
+    6: { height: 0, depth: 0, follow: 0 }
   };
 
   const config = stageZoom[state.stage];
+
+  if (state.stage >= 6) {
+    const desired = new THREE.Vector3(0, 5, 82);
+
+    camera.position.lerp(
+      desired,
+      0.028
+    );
+
+    camera.lookAt(0, 0, 0);
+    return;
+  }
 
   const target = new THREE.Vector3(
     hole.position.x * config.follow,
@@ -2250,6 +2508,7 @@ function animate() {
   updateSmoke(delta);
   updateRegionalTargets(delta);
   updateContinentalTargets(delta);
+  updateEarthStage(delta);
   updateSession(delta);
   updateCamera();
   updateHud();
