@@ -269,7 +269,12 @@ const state = {
   flareActive: false,
   flareTimer: 0,
   nextFlareAt: 28,
-  finished: false
+  finished: false,
+  previousStage: 1,
+  stageFlashTimer: 0,
+  impactFlash: 0,
+  shake: 0,
+  finalShown: false
 };
 
 const groundGeometry = new THREE.PlaneGeometry(worldSize, worldSize, 34, 34);
@@ -1416,6 +1421,8 @@ function destroyEmitter(emitter) {
   state.comboTimer = 6;
   state.score += Math.round(120 * strength * state.combo);
   state.emittersDestroyed += 1;
+  state.impactFlash = Math.max(state.impactFlash, 0.5);
+  state.shake = Math.max(state.shake, 0.38);
 
   world.remove(emitter);
   updateHoleVisuals();
@@ -1468,6 +1475,10 @@ function updateSession(delta) {
 
   if (state.stage !== previousStage) {
     state.score += state.stage * 250;
+    state.previousStage = previousStage;
+    state.stageFlashTimer = 1.9;
+    state.impactFlash = 1;
+    state.shake = Math.max(state.shake, 0.8);
   }
 
   regionalLayer.visible = state.stage >= 4 && state.stage < 5;
@@ -2081,6 +2092,8 @@ function updateRegionalTargets(delta) {
         state.uvIntensity + 0.06 + target.userData.strength * 0.02
       );
       state.score += Math.round(850 * target.userData.strength);
+      state.impactFlash = 0.75;
+      state.shake = Math.max(state.shake, 0.55);
 
       updateHoleVisuals();
     }
@@ -2126,6 +2139,8 @@ function updateContinentalTargets(delta) {
         state.uvIntensity + 0.075 + target.userData.strength * 0.018
       );
       state.score += Math.round(1600 * target.userData.strength);
+      state.impactFlash = 0.9;
+      state.shake = Math.max(state.shake, 0.68);
 
       updateHoleVisuals();
     }
@@ -2207,10 +2222,72 @@ function updateEarthStage(delta) {
         state.uvIntensity + 0.09 + target.userData.strength * 0.015
       );
       state.score += Math.round(3200 * target.userData.strength);
+      state.impactFlash = 1;
+      state.shake = Math.max(state.shake, 0.85);
 
       updateHoleVisuals();
     }
   }
+}
+
+function updateGameFeel(delta) {
+  const impactFlash = document.querySelector('#impactFlash');
+  const stageFlash = document.querySelector('#stageFlash');
+
+  state.impactFlash = Math.max(0, state.impactFlash - delta * 2.5);
+  state.shake = Math.max(0, state.shake - delta * 1.6);
+
+  impactFlash.style.opacity = String(
+    Math.min(0.85, state.impactFlash)
+  );
+
+  if (state.stageFlashTimer > 0) {
+    state.stageFlashTimer = Math.max(0, state.stageFlashTimer - delta);
+
+    const titles = {
+      2: ['District damage', 'The breach is spreading beyond the local zone'],
+      3: ['Urban collapse', 'Factories and dense infrastructure are exposed'],
+      4: ['Regional event', 'The camera pulls back as the crisis expands'],
+      5: ['Continental collapse', 'Megacity and industrial networks are vulnerable'],
+      6: ['Planetary breach', 'The ozone collapse becomes a global atmospheric event']
+    };
+
+    const stageInfo = titles[state.stage];
+
+    if (stageInfo) {
+      document.querySelector('#stageFlashTitle').textContent = stageInfo[0];
+      document.querySelector('#stageFlashText').textContent = stageInfo[1];
+      stageFlash.hidden = false;
+      stageFlash.style.opacity = String(
+        Math.min(1, state.stageFlashTimer * 1.35)
+      );
+    }
+  } else {
+    stageFlash.hidden = true;
+  }
+}
+
+function showFinalScreen() {
+  if (!state.finished || state.finalShown) return;
+
+  state.finalShown = true;
+
+  const finalScreen = document.querySelector('#finalScreen');
+  const minutes = Math.floor(state.gameTime / 60);
+  const seconds = Math.floor(state.gameTime % 60)
+    .toString()
+    .padStart(2, '0');
+
+  document.querySelector('#finalScore').textContent =
+    state.score.toLocaleString('en-US');
+
+  document.querySelector('#finalTime').textContent =
+    `${minutes}:${seconds}`;
+
+  document.querySelector('#finalDamage').textContent =
+    `${Math.round(state.totalDamage * 100)}%`;
+
+  finalScreen.hidden = false;
 }
 
 function updateHud() {
@@ -2353,13 +2430,15 @@ function moveHole(delta) {
         (9 +
           state.holeRadius * 0.16);
 
+      const distance = toTarget.length();
+
       holePosition.add(
         toTarget
           .normalize()
           .multiplyScalar(
             Math.min(
               speed,
-              toTarget.length()
+              distance
             )
           )
       );
@@ -2401,6 +2480,13 @@ function updateCamera() {
       0.028
     );
 
+    if (state.shake > 0) {
+      camera.position.x +=
+        Math.sin(state.gameTime * 48) * state.shake * 0.45;
+      camera.position.y +=
+        Math.cos(state.gameTime * 55) * state.shake * 0.28;
+    }
+
     camera.lookAt(0, 0, 0);
     return;
   }
@@ -2426,6 +2512,13 @@ function updateCamera() {
     desired,
     0.022
   );
+
+  if (state.shake > 0) {
+    camera.position.x +=
+      Math.sin(state.gameTime * 52) * state.shake * 0.5;
+    camera.position.y +=
+      Math.cos(state.gameTime * 61) * state.shake * 0.32;
+  }
 
   camera.lookAt(target);
 }
@@ -2484,6 +2577,15 @@ document
     }
   );
 
+document
+  .querySelector('#playAgainBtn')
+  .addEventListener(
+    'click',
+    () => {
+      window.location.reload();
+    }
+  );
+
 updateHoleVisuals();
 resize();
 
@@ -2510,8 +2612,10 @@ function animate() {
   updateContinentalTargets(delta);
   updateEarthStage(delta);
   updateSession(delta);
+  updateGameFeel(delta);
   updateCamera();
   updateHud();
+  showFinalScreen();
 
   holeRing.rotation.z +=
     delta * 0.2;
