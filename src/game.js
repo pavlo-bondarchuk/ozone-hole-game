@@ -246,6 +246,10 @@ function createEmitter(x, z, strength, size) {
   group.userData.core = core;
   group.userData.ring = ring;
   group.userData.alive = true;
+  group.userData.absorbing = false;
+  group.userData.absorbProgress = 0;
+  group.userData.requiredRadius = 3.2 + size * 1.6 + strength * 0.65;
+  group.userData.baseScale = 1;
 
   emitters.push(group);
   world.add(group);
@@ -396,11 +400,7 @@ function destroyEmitter(emitter) {
   state.score += Math.round(120 * strength);
   state.emittersDestroyed += 1;
 
-  emitter.userData.core.material.emissiveIntensity = 0;
-  emitter.userData.core.material.color.set(0x4a4c50);
-  emitter.userData.ring.visible = false;
-  emitter.scale.setScalar(0.72);
-
+  world.remove(emitter);
   updateHoleVisuals();
 }
 
@@ -493,11 +493,37 @@ function damageTerrain(delta) {
     damaged / terrainPatches.length;
 }
 
-function checkEmitters() {
+function checkEmitters(delta) {
   for (const emitter of emitters) {
     if (!emitter.userData.alive) continue;
 
     emitter.rotation.y += 0.012;
+
+    if (emitter.userData.absorbing) {
+      emitter.userData.absorbProgress = Math.min(
+        1,
+        emitter.userData.absorbProgress + delta * 1.9
+      );
+
+      const progress = emitter.userData.absorbProgress;
+      const target = new THREE.Vector3(
+        hole.position.x,
+        8.55,
+        hole.position.z
+      );
+
+      emitter.position.lerp(target, 0.08 + progress * 0.1);
+      emitter.rotation.y += delta * 9;
+      emitter.rotation.x += delta * 4;
+      emitter.scale.setScalar(Math.max(0.04, 1 - progress * 0.96));
+
+      if (progress >= 1) {
+        destroyEmitter(emitter);
+      }
+
+      continue;
+    }
+
     emitter.userData.core.position.y =
       emitter.userData.size *
       (
@@ -514,13 +540,25 @@ function checkEmitters() {
     const dz =
       emitter.position.z - holePosition.z;
     const distance = Math.hypot(dx, dz);
+    const canAbsorb =
+      state.holeRadius >= emitter.userData.requiredRadius;
+
+    emitter.userData.ring.material.color.set(
+      canAbsorb ? 0xff8d69 : 0x9d72ff
+    );
+
+    emitter.userData.core.material.emissive.set(
+      canAbsorb ? 0xff2d1d : 0x5522aa
+    );
 
     if (
+      canAbsorb &&
       distance <
-      state.holeRadius * 0.88 +
-        emitter.userData.size
+        state.holeRadius * 0.88 +
+          emitter.userData.size
     ) {
-      destroyEmitter(emitter);
+      emitter.userData.absorbing = true;
+      emitter.userData.ring.visible = false;
     }
   }
 }
@@ -764,7 +802,7 @@ function animate() {
   state.gameTime += delta;
 
   moveHole(delta);
-  checkEmitters();
+  checkEmitters(delta);
   damageTerrain(delta);
   updateCamera();
   updateHud();
