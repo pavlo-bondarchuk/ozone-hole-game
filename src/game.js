@@ -44,6 +44,31 @@ const healthyColor = new THREE.Color(0x4e904a);
 const dryColor = new THREE.Color(0xc7954e);
 const burnedColor = new THREE.Color(0x6f3c2b);
 
+const burnCanvas = document.createElement('canvas');
+burnCanvas.width = 1024;
+burnCanvas.height = 1024;
+const burnContext = burnCanvas.getContext('2d');
+burnContext.clearRect(0, 0, burnCanvas.width, burnCanvas.height);
+
+const burnTexture = new THREE.CanvasTexture(burnCanvas);
+burnTexture.colorSpace = THREE.SRGBColorSpace;
+burnTexture.minFilter = THREE.LinearFilter;
+burnTexture.magFilter = THREE.LinearFilter;
+
+const burnPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(worldSize, worldSize),
+  new THREE.MeshBasicMaterial({
+    map: burnTexture,
+    transparent: true,
+    opacity: 0.92,
+    depthWrite: false
+  })
+);
+
+burnPlane.rotation.x = -Math.PI / 2;
+burnPlane.position.y = 0.09;
+world.add(burnPlane);
+
 let pointerActive = false;
 
 const state = {
@@ -619,7 +644,42 @@ function destroyEmitter(emitter) {
   updateHoleVisuals();
 }
 
+function paintBurnTrail(delta) {
+  const x = ((holePosition.x + halfWorld) / worldSize) * burnCanvas.width;
+  const y = ((holePosition.z + halfWorld) / worldSize) * burnCanvas.height;
+  const radius = (state.uvRadius / worldSize) * burnCanvas.width;
+
+  const gradient = burnContext.createRadialGradient(
+    x,
+    y,
+    radius * 0.08,
+    x,
+    y,
+    radius
+  );
+
+  const alpha = Math.min(
+    0.11,
+    0.015 + state.uvIntensity * delta * 0.8
+  );
+
+  gradient.addColorStop(0, `rgba(83, 39, 20, ${alpha})`);
+  gradient.addColorStop(0.45, `rgba(145, 79, 31, ${alpha * 0.78})`);
+  gradient.addColorStop(0.78, `rgba(203, 146, 59, ${alpha * 0.42})`);
+  gradient.addColorStop(1, 'rgba(203, 146, 59, 0)');
+
+  burnContext.globalCompositeOperation = 'source-over';
+  burnContext.fillStyle = gradient;
+  burnContext.beginPath();
+  burnContext.arc(x, y, radius, 0, Math.PI * 2);
+  burnContext.fill();
+
+  burnTexture.needsUpdate = true;
+}
+
 function damageTerrain(delta) {
+  paintBurnTrail(delta);
+
   let damaged = 0;
 
   for (const patch of terrainPatches) {
@@ -674,10 +734,15 @@ function damageTerrain(delta) {
 
     if (distance >= state.uvRadius) continue;
 
+    const exposure =
+      1 - Math.min(1, distance / state.uvRadius);
+
     prop.userData.health = Math.max(
       0,
       prop.userData.health -
-        delta * state.uvIntensity * 0.04
+        delta *
+          state.uvIntensity *
+          (0.035 + exposure * 0.11)
     );
 
     if (prop.userData.kind === 'tree') {
@@ -685,12 +750,24 @@ function damageTerrain(delta) {
       const treeHealthy = new THREE.Color(0x2f6f39);
       const treeDry = new THREE.Color(0x8b6737);
 
-      prop.userData.crown.material.color.copy(
-        treeHealthy.lerp(treeDry, progress)
-      );
+      const treeBurned = new THREE.Color(0x4a3322);
+      const treeColor = treeHealthy.clone();
+
+      if (progress < 0.68) {
+        treeColor.lerp(treeDry, progress / 0.68);
+      } else {
+        treeColor
+          .copy(treeDry)
+          .lerp(treeBurned, (progress - 0.68) / 0.32);
+      }
+
+      prop.userData.crown.material.color.copy(treeColor);
 
       prop.scale.y =
-        0.78 + prop.userData.health * 0.22;
+        0.58 + prop.userData.health * 0.42;
+
+      prop.rotation.z =
+        Math.sin(prop.position.x * 0.7) * progress * 0.08;
     }
 
     if (prop.userData.kind === 'building') {
