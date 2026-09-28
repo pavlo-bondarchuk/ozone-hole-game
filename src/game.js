@@ -36,6 +36,8 @@ const halfWorld = worldSize / 2;
 const terrainPatches = [];
 const emitters = [];
 const props = [];
+const fields = [];
+const lakes = [];
 const keys = new Set();
 const pointer = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
@@ -222,6 +224,82 @@ for (let i = 0; i < 28; i += 1) {
     )
   );
 }
+
+function createField(x, z, width, depth) {
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x8aaa3c,
+    roughness: 0.96
+  });
+
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(width, 0.12, depth),
+    material
+  );
+
+  mesh.position.set(x, 0.12, z);
+  mesh.rotation.y = randomRange(-0.18, 0.18);
+  mesh.receiveShadow = true;
+  mesh.userData.health = 1;
+  mesh.userData.baseColor = new THREE.Color(0x8aaa3c);
+
+  fields.push(mesh);
+  world.add(mesh);
+
+  const rows = Math.max(3, Math.round(width / 0.75));
+
+  for (let i = 0; i < rows; i += 1) {
+    const row = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.05, depth * 0.9),
+      new THREE.MeshBasicMaterial({
+        color: 0xc3cf69,
+        transparent: true,
+        opacity: 0.42
+      })
+    );
+
+    row.position.set(
+      x - width * 0.42 + (i / Math.max(1, rows - 1)) * width * 0.84,
+      0.21,
+      z
+    );
+    row.rotation.y = mesh.rotation.y;
+    world.add(row);
+  }
+}
+
+[
+  [-22, 4, 8, 5],
+  [-12, -8, 7, 4],
+  [16, -13, 9, 5],
+  [21, 22, 8, 5],
+  [-8, 24, 9, 4]
+].forEach((data) => createField(...data));
+
+function createLake(x, z, radiusX, radiusZ) {
+  const geometry = new THREE.CircleGeometry(1, 48);
+  geometry.rotateX(-Math.PI / 2);
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x2d91b8,
+    roughness: 0.24,
+    metalness: 0.08,
+    transparent: true,
+    opacity: 0.88
+  });
+
+  const lake = new THREE.Mesh(geometry, material);
+  lake.position.set(x, 0.11, z);
+  lake.scale.set(radiusX, 1, radiusZ);
+  lake.receiveShadow = true;
+  lake.userData.water = 1;
+  lake.userData.baseScale = lake.scale.clone();
+
+  lakes.push(lake);
+  world.add(lake);
+}
+
+createLake(13, 25, 5.5, 3.1);
+createLake(-25, -14, 4.2, 2.6);
 
 function createLabel(text) {
   const canvas = document.createElement('canvas');
@@ -778,6 +856,76 @@ function damageTerrain(delta) {
         progress * 0.035,
         0
       );
+    }
+  }
+
+  for (const field of fields) {
+    const distance = Math.hypot(
+      field.position.x - holePosition.x,
+      field.position.z - holePosition.z
+    );
+
+    if (distance < state.uvRadius) {
+      const exposure =
+        1 - Math.min(1, distance / state.uvRadius);
+
+      field.userData.health = Math.max(
+        0,
+        field.userData.health -
+          delta *
+            state.uvIntensity *
+            (0.055 + exposure * 0.18)
+      );
+
+      const progress = 1 - field.userData.health;
+      const fieldDry = new THREE.Color(0xc49a47);
+      const fieldBurned = new THREE.Color(0x70472d);
+      const color = field.userData.baseColor.clone();
+
+      if (progress < 0.7) {
+        color.lerp(fieldDry, progress / 0.7);
+      } else {
+        color
+          .copy(fieldDry)
+          .lerp(fieldBurned, (progress - 0.7) / 0.3);
+      }
+
+      field.material.color.copy(color);
+    }
+  }
+
+  for (const lake of lakes) {
+    const distance = Math.hypot(
+      lake.position.x - holePosition.x,
+      lake.position.z - holePosition.z
+    );
+
+    if (distance < state.uvRadius) {
+      const exposure =
+        1 - Math.min(1, distance / state.uvRadius);
+
+      lake.userData.water = Math.max(
+        0.18,
+        lake.userData.water -
+          delta *
+            state.uvIntensity *
+            (0.01 + exposure * 0.045)
+      );
+
+      const water = lake.userData.water;
+
+      lake.scale.set(
+        lake.userData.baseScale.x * water,
+        1,
+        lake.userData.baseScale.z * water
+      );
+
+      lake.material.opacity =
+        0.34 + water * 0.54;
+
+      lake.material.color
+        .set(0x2d91b8)
+        .lerp(new THREE.Color(0x756844), 1 - water);
     }
   }
 
