@@ -8,8 +8,44 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x081523);
-scene.fog = new THREE.Fog(0x081523, 58, 138);
+scene.background = new THREE.Color(0x6ca8c9);
+scene.fog = new THREE.Fog(0x8db8c9, 62, 150);
+
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(180, 48, 28),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      topColor: { value: new THREE.Color(0x245a87) },
+      horizonColor: { value: new THREE.Color(0x8ec6d5) },
+      bottomColor: { value: new THREE.Color(0xd8c792) }
+    },
+    vertexShader: `
+      varying vec3 vWorldPosition;
+
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 topColor;
+      uniform vec3 horizonColor;
+      uniform vec3 bottomColor;
+      varying vec3 vWorldPosition;
+
+      void main() {
+        float h = normalize(vWorldPosition).y;
+        vec3 color = mix(horizonColor, topColor, smoothstep(0.05, 0.75, h));
+        color = mix(bottomColor, color, smoothstep(-0.35, 0.12, h));
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `
+  })
+);
+scene.add(sky);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 300);
 camera.position.set(0, 42, 50);
@@ -597,6 +633,36 @@ function createEmitter(x, z, typeKey, scale = 1) {
   [18, 4, 'factory', 0.8]
 ].forEach((data) => createEmitter(...data));
 
+const atmosphereLayer = new THREE.Mesh(
+  new THREE.CircleGeometry(38, 96),
+  new THREE.MeshBasicMaterial({
+    color: 0x79c8ef,
+    transparent: true,
+    opacity: 0.12,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  })
+);
+
+atmosphereLayer.rotation.x = -Math.PI / 2;
+atmosphereLayer.position.y = 8.72;
+scene.add(atmosphereLayer);
+
+const atmosphereRing = new THREE.Mesh(
+  new THREE.RingGeometry(28, 39, 96),
+  new THREE.MeshBasicMaterial({
+    color: 0xa9e3ff,
+    transparent: true,
+    opacity: 0.12,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  })
+);
+
+atmosphereRing.rotation.x = -Math.PI / 2;
+atmosphereRing.position.y = 8.74;
+scene.add(atmosphereRing);
+
 const hole = new THREE.Group();
 scene.add(hole);
 
@@ -611,8 +677,38 @@ const shadowDisc = new THREE.Mesh(
 );
 
 shadowDisc.rotation.x = -Math.PI / 2;
-shadowDisc.position.y = 8.6;
+shadowDisc.position.y = 8.78;
 hole.add(shadowDisc);
+
+const innerHole = new THREE.Mesh(
+  new THREE.CircleGeometry(1, 64),
+  new THREE.MeshBasicMaterial({
+    color: 0x03060d,
+    transparent: true,
+    opacity: 0.84,
+    depthWrite: false
+  })
+);
+
+innerHole.rotation.x = -Math.PI / 2;
+innerHole.position.y = 8.8;
+hole.add(innerHole);
+
+const ozoneGlow = new THREE.Mesh(
+  new THREE.RingGeometry(0.58, 1.16, 96),
+  new THREE.MeshBasicMaterial({
+    color: 0x7fd8ff,
+    transparent: true,
+    opacity: 0.38,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+);
+
+ozoneGlow.rotation.x = -Math.PI / 2;
+ozoneGlow.position.y = 8.82;
+hole.add(ozoneGlow);
 
 const holeRing = new THREE.Mesh(
   new THREE.RingGeometry(0.74, 1, 64),
@@ -674,6 +770,38 @@ const beam = new THREE.Mesh(
 beam.position.y = 4.4;
 hole.add(beam);
 
+const beamCoreMaterial = new THREE.MeshBasicMaterial({
+  color: 0xfff3b0,
+  transparent: true,
+  opacity: 0.04,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending
+});
+
+const beamCore = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.58, 0.9, 8.45, 48, 1, true),
+  beamCoreMaterial
+);
+
+beamCore.position.y = 4.38;
+hole.add(beamCore);
+
+const groundGlow = new THREE.Mesh(
+  new THREE.CircleGeometry(1, 64),
+  new THREE.MeshBasicMaterial({
+    color: 0xffd968,
+    transparent: true,
+    opacity: 0.08,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+);
+
+groundGlow.rotation.x = -Math.PI / 2;
+groundGlow.position.y = 0.2;
+hole.add(groundGlow);
+
 const sunOrb = new THREE.Mesh(
   new THREE.SphereGeometry(2.1, 24, 16),
   new THREE.MeshBasicMaterial({ color: 0xfff6bd })
@@ -682,18 +810,62 @@ const sunOrb = new THREE.Mesh(
 sunOrb.position.set(-26, 28, -16);
 scene.add(sunOrb);
 
+const sunGlowTextureCanvas = document.createElement('canvas');
+sunGlowTextureCanvas.width = 256;
+sunGlowTextureCanvas.height = 256;
+
+const sunGlowContext = sunGlowTextureCanvas.getContext('2d');
+const sunGlowGradient = sunGlowContext.createRadialGradient(
+  128,
+  128,
+  8,
+  128,
+  128,
+  128
+);
+
+sunGlowGradient.addColorStop(0, 'rgba(255, 248, 190, 1)');
+sunGlowGradient.addColorStop(0.18, 'rgba(255, 224, 120, .85)');
+sunGlowGradient.addColorStop(0.5, 'rgba(255, 190, 65, .28)');
+sunGlowGradient.addColorStop(1, 'rgba(255, 170, 40, 0)');
+
+sunGlowContext.fillStyle = sunGlowGradient;
+sunGlowContext.fillRect(0, 0, 256, 256);
+
+const sunGlowTexture = new THREE.CanvasTexture(sunGlowTextureCanvas);
+
+const sunGlow = new THREE.Sprite(
+  new THREE.SpriteMaterial({
+    map: sunGlowTexture,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+);
+
+sunGlow.position.copy(sunOrb.position);
+sunGlow.scale.set(15, 15, 1);
+scene.add(sunGlow);
+
 const holePosition = new THREE.Vector3(0, 0, 0);
 hole.position.copy(holePosition);
 
 function updateHoleVisuals() {
   shadowDisc.scale.setScalar(state.holeRadius);
+  innerHole.scale.setScalar(state.holeRadius * 0.78);
+  ozoneGlow.scale.setScalar(state.holeRadius * 1.04);
   holeRing.scale.setScalar(state.holeRadius);
   uvDisc.scale.setScalar(state.uvRadius);
   uvEdge.scale.setScalar(state.uvRadius);
-  beam.scale.set(state.holeRadius * 0.9, 1, state.holeRadius * 0.9);
+  groundGlow.scale.setScalar(state.uvRadius * 0.92);
+  beam.scale.set(state.holeRadius * 0.92, 1, state.holeRadius * 0.92);
+  beamCore.scale.set(state.holeRadius * 0.82, 1, state.holeRadius * 0.82);
 
-  uvDisc.material.opacity = 0.08 + state.uvIntensity * 0.16;
-  beamMaterial.opacity = 0.018 + state.uvIntensity * 0.05;
+  uvDisc.material.opacity = 0.07 + state.uvIntensity * 0.13;
+  beamMaterial.opacity = 0.018 + state.uvIntensity * 0.055;
+  beamCoreMaterial.opacity = 0.025 + state.uvIntensity * 0.07;
+  groundGlow.material.opacity = 0.045 + state.uvIntensity * 0.07;
+  ozoneGlow.material.opacity = 0.24 + state.uvIntensity * 0.28;
 }
 
 function clampHole() {
@@ -1375,8 +1547,36 @@ function animate() {
   holeRing.rotation.z +=
     delta * 0.2;
 
+  ozoneGlow.rotation.z -=
+    delta * 0.08;
+
   uvEdge.rotation.z -=
     delta * 0.12;
+
+  atmosphereRing.rotation.z +=
+    delta * 0.006;
+
+  const flarePulse = state.flareActive
+    ? 1.18 + Math.sin(state.gameTime * 7) * 0.08
+    : 1;
+
+  sunGlow.scale.set(
+    15 * flarePulse,
+    15 * flarePulse,
+    1
+  );
+
+  sun.material = sun.material;
+
+  if (state.flareActive) {
+    sun.intensity = 7.2;
+    sunOrb.scale.setScalar(1.08);
+    beamCoreMaterial.opacity =
+      0.12 + Math.sin(state.gameTime * 8) * 0.025;
+  } else {
+    sun.intensity = 5;
+    sunOrb.scale.setScalar(1);
+  }
 
   renderer.render(
     scene,
