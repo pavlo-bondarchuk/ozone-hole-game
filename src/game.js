@@ -198,23 +198,225 @@ for (let i = 0; i < 28; i += 1) {
   );
 }
 
-function createEmitter(x, z, strength, size) {
-  const group = new THREE.Group();
+function createLabel(text) {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
 
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(size * 0.8, size, size * 0.75, 12),
+  canvas.width = 512;
+  canvas.height = 128;
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = 'rgba(5, 13, 24, 0.82)';
+  context.roundRect(16, 22, 480, 84, 22);
+  context.fill();
+
+  context.fillStyle = '#eef7ff';
+  context.font = '700 34px Inter, Arial, sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(text, 256, 64);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false
+  });
+
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(6.8, 1.7, 1);
+
+  return sprite;
+}
+
+function createCanister(group, scale) {
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.58 * scale, 0.58 * scale, 1.9 * scale, 16),
     new THREE.MeshStandardMaterial({
-      color: 0x363a42,
-      roughness: 0.64,
-      metalness: 0.56
+      color: 0xdcdfe3,
+      roughness: 0.42,
+      metalness: 0.6
     })
   );
 
-  base.position.y = size * 0.38;
-  base.castShadow = true;
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18 * scale, 0.18 * scale, 0.38 * scale, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0x24282f,
+      roughness: 0.6
+    })
+  );
+
+  body.position.y = 0.95 * scale;
+  cap.position.y = 2.02 * scale;
+
+  group.add(body, cap);
+}
+
+function createAcUnit(group, scale) {
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(2.4 * scale, 1.45 * scale, 0.9 * scale),
+    new THREE.MeshStandardMaterial({
+      color: 0xe7ecef,
+      roughness: 0.58,
+      metalness: 0.15
+    })
+  );
+
+  const grille = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.46 * scale, 0.46 * scale, 0.08 * scale, 24),
+    new THREE.MeshStandardMaterial({
+      color: 0x5d6870,
+      roughness: 0.68,
+      metalness: 0.35
+    })
+  );
+
+  body.position.y = 0.85 * scale;
+  grille.rotation.x = Math.PI / 2;
+  grille.position.set(0.55 * scale, 0.85 * scale, 0.49 * scale);
+
+  group.add(body, grille);
+}
+
+function createColdStorage(group, scale) {
+  const building = new THREE.Mesh(
+    new THREE.BoxGeometry(3.1 * scale, 2.1 * scale, 2.4 * scale),
+    new THREE.MeshStandardMaterial({
+      color: 0xd9e4e9,
+      roughness: 0.66,
+      metalness: 0.18
+    })
+  );
+
+  const unit = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5 * scale, 0.55 * scale, 1.15 * scale),
+    new THREE.MeshStandardMaterial({
+      color: 0x64727c,
+      roughness: 0.55,
+      metalness: 0.35
+    })
+  );
+
+  building.position.y = 1.05 * scale;
+  unit.position.set(0, 2.38 * scale, 0);
+
+  group.add(building, unit);
+}
+
+function createFactory(group, scale) {
+  const building = new THREE.Mesh(
+    new THREE.BoxGeometry(4.4 * scale, 2.5 * scale, 3.2 * scale),
+    new THREE.MeshStandardMaterial({
+      color: 0x74787d,
+      roughness: 0.8,
+      metalness: 0.12
+    })
+  );
+
+  building.position.y = 1.25 * scale;
+  group.add(building);
+
+  for (let i = 0; i < 2; i += 1) {
+    const stack = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34 * scale, 0.48 * scale, 4.2 * scale, 12),
+      new THREE.MeshStandardMaterial({
+        color: 0x4e5155,
+        roughness: 0.74,
+        metalness: 0.2
+      })
+    );
+
+    stack.position.set(
+      (-0.8 + i * 1.6) * scale,
+      4 * scale,
+      -0.4 * scale
+    );
+
+    group.add(stack);
+  }
+}
+
+function createIndustrialComplex(group, scale) {
+  createFactory(group, scale);
+
+  const tankMaterial = new THREE.MeshStandardMaterial({
+    color: 0xa6afb6,
+    roughness: 0.5,
+    metalness: 0.48
+  });
+
+  for (let i = 0; i < 2; i += 1) {
+    const tank = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.8 * scale, 0.8 * scale, 2.3 * scale, 18),
+      tankMaterial
+    );
+
+    tank.position.set(
+      (2.9 + i * 1.85) * scale,
+      1.15 * scale,
+      0.7 * scale
+    );
+
+    group.add(tank);
+  }
+}
+
+const emitterTypes = {
+  canister: {
+    label: 'CFC canister',
+    strength: 0.48,
+    size: 0.62,
+    minRadius: 3.8,
+    build: createCanister
+  },
+  ac: {
+    label: 'Old AC unit',
+    strength: 0.72,
+    size: 0.82,
+    minRadius: 4.2,
+    build: createAcUnit
+  },
+  storage: {
+    label: 'Cold storage',
+    strength: 1.02,
+    size: 1.05,
+    minRadius: 5.3,
+    build: createColdStorage
+  },
+  factory: {
+    label: 'CFC factory',
+    strength: 1.35,
+    size: 1.24,
+    minRadius: 6.5,
+    build: createFactory
+  },
+  complex: {
+    label: 'Industrial complex',
+    strength: 1.72,
+    size: 1.42,
+    minRadius: 8,
+    build: createIndustrialComplex
+  }
+};
+
+function createEmitter(x, z, typeKey, scale = 1) {
+  const type = emitterTypes[typeKey];
+  const group = new THREE.Group();
+
+  type.build(group, scale);
+
+  group.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
 
   const core = new THREE.Mesh(
-    new THREE.SphereGeometry(size * 0.4, 16, 12),
+    new THREE.SphereGeometry(type.size * scale * 0.28, 16, 12),
     new THREE.MeshStandardMaterial({
       color: 0xff684f,
       emissive: 0xff2d1d,
@@ -223,14 +425,18 @@ function createEmitter(x, z, strength, size) {
     })
   );
 
-  core.position.y = size * 1.08;
+  core.position.y = 2.7 * scale;
 
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(size * 1.1, size * 1.65, 32),
+    new THREE.RingGeometry(
+      type.size * scale * 1.1,
+      type.size * scale * 1.7,
+      32
+    ),
     new THREE.MeshBasicMaterial({
       color: 0xff8d69,
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.28,
       side: THREE.DoubleSide,
       depthWrite: false
     })
@@ -239,37 +445,46 @@ function createEmitter(x, z, strength, size) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.08;
 
-  group.add(base, core, ring);
+  const label = createLabel(type.label);
+  label.position.y = 4.5 * scale;
+  label.visible = false;
+
+  group.add(core, ring, label);
   group.position.set(x, 0, z);
-  group.userData.strength = strength;
-  group.userData.size = size;
+  group.userData.type = typeKey;
+  group.userData.label = type.label;
+  group.userData.strength = type.strength;
+  group.userData.size = type.size * scale;
   group.userData.core = core;
   group.userData.ring = ring;
+  group.userData.labelSprite = label;
   group.userData.alive = true;
   group.userData.absorbing = false;
   group.userData.absorbProgress = 0;
-  group.userData.requiredRadius = 3.2 + size * 1.6 + strength * 0.65;
-  group.userData.baseScale = 1;
+  group.userData.requiredRadius = type.minRadius;
+  group.userData.baseScale = scale;
 
   emitters.push(group);
   world.add(group);
 }
 
 [
-  [-28, -25, 0.8, 0.9],
-  [-16, -18, 0.7, 0.8],
-  [4, -28, 0.95, 1],
-  [24, -21, 1.15, 1.1],
-  [31, -4, 1.3, 1.2],
-  [19, 16, 1.05, 1.05],
-  [31, 28, 1.5, 1.3],
-  [4, 28, 0.9, 0.95],
-  [-17, 26, 1.2, 1.1],
-  [-31, 13, 1.4, 1.2],
-  [-26, -3, 0.85, 0.9],
-  [-4, 5, 0.7, 0.8],
-  [11, 7, 0.8, 0.9],
-  [0, 17, 1.15, 1.08]
+  [-30, -26, 'canister', 0.92],
+  [-20, -17, 'canister', 0.78],
+  [-8, -29, 'ac', 0.9],
+  [7, -25, 'ac', 1],
+  [24, -23, 'storage', 0.94],
+  [32, -8, 'factory', 0.9],
+  [29, 12, 'storage', 1.05],
+  [30, 29, 'complex', 0.86],
+  [8, 30, 'factory', 0.82],
+  [-14, 28, 'storage', 0.98],
+  [-31, 16, 'factory', 0.84],
+  [-29, -2, 'ac', 1.02],
+  [-9, 7, 'canister', 0.84],
+  [7, 9, 'ac', 0.92],
+  [3, 19, 'storage', 0.86],
+  [18, 4, 'factory', 0.8]
 ].forEach((data) => createEmitter(...data));
 
 const hole = new THREE.Group();
@@ -550,6 +765,29 @@ function checkEmitters(delta) {
     emitter.userData.core.material.emissive.set(
       canAbsorb ? 0xff2d1d : 0x5522aa
     );
+
+    emitter.userData.labelSprite.visible = distance < 10;
+
+    if (emitter.userData.labelSprite.visible) {
+      const lockText = canAbsorb
+        ? emitter.userData.label
+        : `${emitter.userData.label} · need ${Math.ceil(emitter.userData.requiredRadius * 2)} m`;
+
+      const labelTexture = emitter.userData.labelSprite.material.map;
+      const labelCanvas = labelTexture.image;
+      const context = labelCanvas.getContext('2d');
+
+      context.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+      context.fillStyle = 'rgba(5, 13, 24, 0.84)';
+      context.roundRect(16, 22, 480, 84, 22);
+      context.fill();
+      context.fillStyle = canAbsorb ? '#eef7ff' : '#c7b6ff';
+      context.font = '700 30px Inter, Arial, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(lockText, 256, 64);
+      labelTexture.needsUpdate = true;
+    }
 
     if (
       canAbsorb &&
