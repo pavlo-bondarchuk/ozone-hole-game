@@ -75,6 +75,8 @@ const props = [];
 const fields = [];
 const lakes = [];
 const vehicles = [];
+const pedestrians = [];
+const smokePuffs = [];
 const keys = new Set();
 const pointer = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
@@ -271,6 +273,54 @@ for (let i = 0; i < 18; i += 1) {
     Math.random(),
     randomRange(3.5, 6.4),
     new THREE.Color().setHSL(Math.random(), 0.55, 0.52)
+  );
+}
+
+function createPedestrian(x, z, color) {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.1, 0.12, 0.5, 6),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.8
+    })
+  );
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 8, 6),
+    new THREE.MeshStandardMaterial({
+      color: 0xd9aa82,
+      roughness: 0.9
+    })
+  );
+
+  body.position.y = 0.35;
+  head.position.y = 0.72;
+
+  group.add(body, head);
+  group.position.set(x, 0.16, z);
+  group.userData.speed = randomRange(0.7, 1.2);
+  group.userData.state = 'idle';
+  group.userData.target = new THREE.Vector3(
+    x + randomRange(-4, 4),
+    0.16,
+    z + randomRange(-4, 4)
+  );
+
+  pedestrians.push(group);
+  world.add(group);
+}
+
+for (let i = 0; i < 34; i += 1) {
+  createPedestrian(
+    randomRange(-18, 18),
+    randomRange(-14, 16),
+    new THREE.Color().setHSL(
+      Math.random(),
+      0.45,
+      randomRange(0.35, 0.62)
+    )
   );
 }
 
@@ -1420,6 +1470,154 @@ function checkEmitters(delta) {
   }
 }
 
+function spawnSmoke(x, z, intensity = 1) {
+  if (smokePuffs.length > 55) return;
+
+  const puff = new THREE.Mesh(
+    new THREE.SphereGeometry(randomRange(0.28, 0.52) * intensity, 8, 6),
+    new THREE.MeshBasicMaterial({
+      color: 0x504d49,
+      transparent: true,
+      opacity: randomRange(0.12, 0.24),
+      depthWrite: false
+    })
+  );
+
+  puff.position.set(
+    x + randomRange(-0.4, 0.4),
+    randomRange(0.45, 1.2),
+    z + randomRange(-0.4, 0.4)
+  );
+
+  puff.userData.life = randomRange(2.2, 4.4);
+  puff.userData.maxLife = puff.userData.life;
+  puff.userData.rise = randomRange(0.35, 0.7);
+
+  smokePuffs.push(puff);
+  world.add(puff);
+}
+
+function updateSmoke(delta) {
+  for (let i = smokePuffs.length - 1; i >= 0; i -= 1) {
+    const puff = smokePuffs[i];
+
+    puff.userData.life -= delta;
+    puff.position.y += puff.userData.rise * delta;
+    puff.scale.multiplyScalar(1 + delta * 0.12);
+
+    puff.material.opacity =
+      0.22 * Math.max(0, puff.userData.life / puff.userData.maxLife);
+
+    if (puff.userData.life <= 0) {
+      world.remove(puff);
+      smokePuffs.splice(i, 1);
+    }
+  }
+}
+
+function updatePedestrians(delta) {
+  for (const person of pedestrians) {
+    const dx = person.position.x - holePosition.x;
+    const dz = person.position.z - holePosition.z;
+    const distance = Math.hypot(dx, dz);
+
+    if (distance < state.uvRadius * 0.82) {
+      person.userData.state = 'evacuating';
+
+      const away = new THREE.Vector3(dx, 0, dz);
+
+      if (away.lengthSq() < 0.01) {
+        away.set(1, 0, 0);
+      }
+
+      away
+        .normalize()
+        .multiplyScalar(7);
+
+      person.userData.target.set(
+        person.position.x + away.x,
+        0.16,
+        person.position.z + away.z
+      );
+    }
+
+    const toTarget = person.userData.target
+      .clone()
+      .sub(person.position);
+
+    toTarget.y = 0;
+
+    if (toTarget.length() < 0.35) {
+      person.userData.target.set(
+        THREE.MathUtils.clamp(
+          person.position.x + randomRange(-5, 5),
+          -19,
+          19
+        ),
+        0.16,
+        THREE.MathUtils.clamp(
+          person.position.z + randomRange(-5, 5),
+          -15,
+          17
+        )
+      );
+    } else {
+      const speed =
+        person.userData.speed *
+        (person.userData.state === 'evacuating' ? 2.7 : 1);
+
+      const step = toTarget
+        .normalize()
+        .multiplyScalar(delta * speed);
+
+      person.position.add(step);
+      person.rotation.y = Math.atan2(step.x, step.z);
+    }
+
+    if (
+      person.userData.state === 'evacuating' &&
+      distance > state.uvRadius * 1.35
+    ) {
+      person.userData.state = 'idle';
+    }
+  }
+}
+
+function updateBuildingDamageEffects(delta) {
+  if (Math.random() > delta * 8) return;
+
+  for (const prop of props) {
+    if (prop.userData.kind !== 'building') continue;
+
+    const damage = 1 - prop.userData.health;
+
+    if (damage < 0.45) continue;
+
+    const distance = Math.hypot(
+      prop.position.x - holePosition.x,
+      prop.position.z - holePosition.z
+    );
+
+    if (distance > state.uvRadius * 1.2) continue;
+
+    spawnSmoke(
+      prop.position.x,
+      prop.position.z,
+      0.8 + damage * 0.8
+    );
+
+    if (damage > 0.72) {
+      prop.scale.y = Math.max(
+        0.72,
+        prop.scale.y - delta * 0.006
+      );
+
+      prop.rotation.z =
+        Math.sin(prop.position.x + prop.position.z) * damage * 0.015;
+    }
+  }
+}
+
 function updateTraffic(delta) {
   for (const vehicle of vehicles) {
     const route = vehicle.userData.route;
@@ -1761,6 +1959,9 @@ function animate() {
   checkEmitters(delta);
   damageTerrain(delta);
   updateTraffic(delta);
+  updatePedestrians(delta);
+  updateBuildingDamageEffects(delta);
+  updateSmoke(delta);
   updateSession(delta);
   updateCamera();
   updateHud();
