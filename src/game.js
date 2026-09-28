@@ -74,6 +74,7 @@ const emitters = [];
 const props = [];
 const fields = [];
 const lakes = [];
+const vehicles = [];
 const keys = new Set();
 const pointer = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
@@ -212,6 +213,67 @@ function createRoad(x, z, width, depth, horizontal = true) {
   [0, 0, 3.6, 72, false],
   [23, 0, 3.2, 72, false]
 ].forEach((data) => createRoad(...data));
+
+function createVehicle(route, offset, speed, color) {
+  const group = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(1.1, 0.42, 0.58),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.58,
+      metalness: 0.18
+    })
+  );
+
+  body.position.y = 0.32;
+  body.castShadow = true;
+
+  const cabin = new THREE.Mesh(
+    new THREE.BoxGeometry(0.55, 0.3, 0.48),
+    new THREE.MeshStandardMaterial({
+      color: 0xc7d8de,
+      roughness: 0.35,
+      metalness: 0.08
+    })
+  );
+
+  cabin.position.set(-0.08, 0.63, 0);
+  cabin.castShadow = true;
+
+  group.add(body, cabin);
+  group.position.y = 0.2;
+
+  group.userData.route = route;
+  group.userData.t = offset;
+  group.userData.speed = speed;
+  group.userData.baseSpeed = speed;
+  group.userData.evacuating = false;
+  group.userData.disabled = false;
+
+  vehicles.push(group);
+  world.add(group);
+}
+
+const trafficRoutes = [
+  { axis: 'x', fixed: -18, min: -35, max: 35, dir: 1 },
+  { axis: 'x', fixed: -18, min: -35, max: 35, dir: -1 },
+  { axis: 'x', fixed: 2, min: -35, max: 35, dir: 1 },
+  { axis: 'x', fixed: 20, min: -35, max: 35, dir: -1 },
+  { axis: 'z', fixed: -22, min: -35, max: 35, dir: 1 },
+  { axis: 'z', fixed: 0, min: -35, max: 35, dir: -1 },
+  { axis: 'z', fixed: 23, min: -35, max: 35, dir: 1 }
+];
+
+for (let i = 0; i < 18; i += 1) {
+  createVehicle(
+    trafficRoutes[i % trafficRoutes.length],
+    Math.random(),
+    randomRange(3.5, 6.4),
+    new THREE.Color().setHSL(Math.random(), 0.55, 0.52)
+  );
+}
+
 
 function randomRange(min, max) {
   return min + Math.random() * (max - min);
@@ -1358,6 +1420,77 @@ function checkEmitters(delta) {
   }
 }
 
+function updateTraffic(delta) {
+  for (const vehicle of vehicles) {
+    const route = vehicle.userData.route;
+    const dx = vehicle.position.x - holePosition.x;
+    const dz = vehicle.position.z - holePosition.z;
+    const distance = Math.hypot(dx, dz);
+
+    if (distance < state.uvRadius * 0.72) {
+      vehicle.userData.evacuating = true;
+    }
+
+    if (distance < state.uvRadius * 0.34 && state.uvIntensity > 0.35) {
+      vehicle.userData.disabled = true;
+    }
+
+    if (vehicle.userData.disabled) {
+      vehicle.userData.speed = THREE.MathUtils.lerp(
+        vehicle.userData.speed,
+        0,
+        0.08
+      );
+
+      vehicle.rotation.z =
+        Math.sin(vehicle.position.x * 0.4 + vehicle.position.z) * 0.08;
+
+      continue;
+    }
+
+    const targetSpeed = vehicle.userData.evacuating
+      ? vehicle.userData.baseSpeed * 1.85
+      : vehicle.userData.baseSpeed;
+
+    vehicle.userData.speed = THREE.MathUtils.lerp(
+      vehicle.userData.speed,
+      targetSpeed,
+      0.035
+    );
+
+    const length = route.max - route.min;
+    vehicle.userData.t +=
+      (delta * vehicle.userData.speed * route.dir) / length;
+
+    if (vehicle.userData.t > 1) {
+      vehicle.userData.t -= 1;
+    }
+
+    if (vehicle.userData.t < 0) {
+      vehicle.userData.t += 1;
+    }
+
+    const position = route.min + length * vehicle.userData.t;
+
+    if (route.axis === 'x') {
+      vehicle.position.x = position;
+      vehicle.position.z = route.fixed + (route.dir > 0 ? -0.65 : 0.65);
+      vehicle.rotation.y = route.dir > 0 ? 0 : Math.PI;
+    } else {
+      vehicle.position.x = route.fixed + (route.dir > 0 ? 0.65 : -0.65);
+      vehicle.position.z = position;
+      vehicle.rotation.y = route.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    }
+
+    if (
+      vehicle.userData.evacuating &&
+      distance > state.uvRadius * 1.5
+    ) {
+      vehicle.userData.evacuating = false;
+    }
+  }
+}
+
 function updateHud() {
   const stages = {
     1: ['Stage 1 · Local breach', 'Absorb canisters and old AC units.'],
@@ -1627,6 +1760,7 @@ function animate() {
   moveHole(delta);
   checkEmitters(delta);
   damageTerrain(delta);
+  updateTraffic(delta);
   updateSession(delta);
   updateCamera();
   updateHud();
