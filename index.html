@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07111e">
+  <meta name="description" content="O3: Ozone Collapse — a browser game about ozone depletion and UV damage.">
+  <title>O₃: Ozone Collapse</title>
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <header id="hud">
+      <div class="brand">
+        <span class="brand-mark">O₃</span>
+        <div>
+          <strong>Ozone Collapse</strong>
+          <small>UV breach simulation</small>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <span>Ozone hole</span>
+          <strong id="holeValue">8 m</strong>
+          <div class="bar"><i id="holeBar"></i></div>
+        </div>
+
+        <div class="stat">
+          <span>UV intensity</span>
+          <strong id="uvValue">18%</strong>
+          <div class="bar"><i id="uvBar"></i></div>
+        </div>
+
+        <div class="stat">
+          <span>Surface damage</span>
+          <strong id="damageValue">0%</strong>
+          <div class="bar"><i id="damageBar"></i></div>
+        </div>
+      </div>
+
+      <div class="score-wrap">
+        <span>Score</span>
+        <strong id="scoreValue">0</strong>
+      </div>
+    </header>
+
+    <div id="objective">
+      <strong>Destroy ozone-depleting sources</strong>
+      <span>Move over glowing emitters to expand the breach.</span>
+    </div>
+
+    <div id="legend">
+      <span><i class="dot emitter"></i> Ozone-depleting source</span>
+      <span><i class="dot uv"></i> UV footprint</span>
+      <span><i class="dot damaged"></i> Damaged terrain</span>
+    </div>
+
+    <div id="controls">
+      <span>WASD / Arrows</span>
+      <span>Mouse</span>
+      <button id="restartBtn" type="button">Restart</button>
+    </div>
+
+    <canvas id="game" aria-label="Ozone Collapse game canvas"></canvas>
+  </div>
+
+  <script type="module" src="./src/game.js"></script>
+</body>
+</html>
