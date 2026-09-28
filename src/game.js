@@ -274,7 +274,10 @@ const state = {
   stageFlashTimer: 0,
   impactFlash: 0,
   shake: 0,
-  finalShown: false
+  finalShown: false,
+  started: false,
+  tutorialStep: 0,
+  tutorialTimer: 0
 };
 
 const groundGeometry = new THREE.PlaneGeometry(worldSize, worldSize, 34, 34);
@@ -1406,8 +1409,8 @@ function destroyEmitter(emitter) {
   const strength = emitter.userData.strength;
 
   emitter.userData.alive = false;
-  state.holeRadius += 0.34 + strength * 0.24;
-  state.uvRadius += 0.48 + strength * 0.34;
+  state.holeRadius += 0.28 + strength * 0.19;
+  state.uvRadius += 0.42 + strength * 0.28;
   state.uvIntensity = Math.min(
     1,
     state.uvIntensity + 0.035 + strength * 0.018
@@ -1433,7 +1436,7 @@ function getUvMultiplier() {
 }
 
 function updateSession(delta) {
-  if (state.finished) return;
+  if (!state.started || state.finished) return;
 
   if (state.comboTimer > 0) {
     state.comboTimer = Math.max(0, state.comboTimer - delta);
@@ -2085,8 +2088,8 @@ function updateRegionalTargets(delta) {
       target.userData.alive = false;
       target.visible = false;
 
-      state.holeRadius += 0.7 + target.userData.strength * 0.18;
-      state.uvRadius += 1 + target.userData.strength * 0.32;
+      state.holeRadius += 0.62 + target.userData.strength * 0.16;
+      state.uvRadius += 0.9 + target.userData.strength * 0.28;
       state.uvIntensity = Math.min(
         1,
         state.uvIntensity + 0.06 + target.userData.strength * 0.02
@@ -2132,8 +2135,8 @@ function updateContinentalTargets(delta) {
       target.userData.alive = false;
       target.visible = false;
 
-      state.holeRadius += 1.1 + target.userData.strength * 0.2;
-      state.uvRadius += 1.6 + target.userData.strength * 0.38;
+      state.holeRadius += 0.95 + target.userData.strength * 0.18;
+      state.uvRadius += 1.4 + target.userData.strength * 0.34;
       state.uvIntensity = Math.min(
         1,
         state.uvIntensity + 0.075 + target.userData.strength * 0.018
@@ -2215,8 +2218,8 @@ function updateEarthStage(delta) {
       target.userData.alive = false;
       target.visible = false;
 
-      state.holeRadius += 1.8 + target.userData.strength * 0.22;
-      state.uvRadius += 2.2 + target.userData.strength * 0.42;
+      state.holeRadius += 1.55 + target.userData.strength * 0.2;
+      state.uvRadius += 2 + target.userData.strength * 0.38;
       state.uvIntensity = Math.min(
         1,
         state.uvIntensity + 0.09 + target.userData.strength * 0.015
@@ -2288,6 +2291,61 @@ function showFinalScreen() {
     `${Math.round(state.totalDamage * 100)}%`;
 
   finalScreen.hidden = false;
+}
+
+function updateTutorial(delta) {
+  const tip = document.querySelector('#tutorialTip');
+
+  if (!state.started || state.finished || state.gameTime > 28) {
+    tip.hidden = true;
+    return;
+  }
+
+  const steps = [
+    [0, 7, 'Move the breach', 'Use WASD, arrow keys or the mouse to move across the map.'],
+    [7, 15, 'Absorb red sources', 'Red targets are available now. Purple targets unlock as the breach grows.'],
+    [15, 23, 'Keep the chain going', 'Absorb targets quickly to increase the combo multiplier.'],
+    [23, 28, 'Watch the surface', 'UV exposure burns terrain, dries vegetation and destabilizes the city.']
+  ];
+
+  const current = steps.find(
+    ([start, end]) => state.gameTime >= start && state.gameTime < end
+  );
+
+  if (!current) {
+    tip.hidden = true;
+    return;
+  }
+
+  document.querySelector('#tutorialTitle').textContent = current[2];
+  document.querySelector('#tutorialText').textContent = current[3];
+  tip.hidden = false;
+}
+
+function updateStageProgress() {
+  const thresholds = {
+    1: [4.4, 5.2],
+    2: [5.2, 6.5],
+    3: [6.5, 8.5],
+    4: [8.5, 11.2],
+    5: [11.2, 15.2],
+    6: [15.2, 22]
+  };
+
+  const [start, end] = thresholds[state.stage];
+  const progress = THREE.MathUtils.clamp(
+    (state.holeRadius - start) / (end - start),
+    0,
+    1
+  );
+
+  document.querySelector('#stageProgressBar').style.width =
+    `${progress * 100}%`;
+
+  document.querySelector('#progressLabel').textContent =
+    state.stage < 6
+      ? `Next stage · ${Math.max(0, Math.ceil((end - state.holeRadius) * 2))} m growth`
+      : 'Planetary stage';
 }
 
 function updateHud() {
@@ -2578,6 +2636,18 @@ document
   );
 
 document
+  .querySelector('#startBtn')
+  .addEventListener(
+    'click',
+    () => {
+      state.started = true;
+      state.gameTime = 0;
+      document.querySelector('#startScreen').hidden = true;
+      clock.start();
+    }
+  );
+
+document
   .querySelector('#playAgainBtn')
   .addEventListener(
     'click',
@@ -2599,21 +2669,28 @@ function animate() {
     0.05
   );
 
-  state.gameTime += delta;
+  if (state.started && !state.finished) {
+    state.gameTime += delta;
+  }
 
-  moveHole(delta);
-  checkEmitters(delta);
-  damageTerrain(delta);
-  updateTraffic(delta);
-  updatePedestrians(delta);
-  updateBuildingDamageEffects(delta);
-  updateSmoke(delta);
-  updateRegionalTargets(delta);
-  updateContinentalTargets(delta);
-  updateEarthStage(delta);
-  updateSession(delta);
+  moveHole(state.started ? delta : 0);
+  if (state.started) {
+    checkEmitters(delta);
+    damageTerrain(delta);
+    updateTraffic(delta);
+    updatePedestrians(delta);
+    updateBuildingDamageEffects(delta);
+    updateSmoke(delta);
+    updateRegionalTargets(delta);
+    updateContinentalTargets(delta);
+    updateEarthStage(delta);
+    updateSession(delta);
+  }
+
   updateGameFeel(delta);
   updateCamera();
+  updateTutorial(delta);
+  updateStageProgress();
   updateHud();
   showFinalScreen();
 
