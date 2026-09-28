@@ -304,3 +304,50 @@ button {
     display: none;
   }
 }
+
+.score-wrap small {
+  display: block;
+  margin-top: 6px;
+  color: #ffda6b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+#eventBanner {
+  position: fixed;
+  z-index: 12;
+  top: 158px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 210px;
+  padding: 12px 18px;
+  border: 1px solid rgba(255, 214, 90, .42);
+  border-radius: 16px;
+  background: rgba(77, 38, 7, .82);
+  box-shadow: 0 0 40px rgba(255, 190, 52, .28);
+  text-align: center;
+  pointer-events: none;
+}
+
+#eventBanner[hidden] {
+  display: none;
+}
+
+#eventBanner strong,
+#eventBanner span {
+  display: block;
+}
+
+#eventBanner strong {
+  color: #fff0a5;
+  font-size: 14px;
+  letter-spacing: .12em;
+}
+
+#eventBanner span {
+  margin-top: 3px;
+  color: #f6c968;
+  font-size: 11px;
+}
