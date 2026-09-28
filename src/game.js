@@ -80,7 +80,14 @@ const state = {
   score: 0,
   totalDamage: 0,
   emittersDestroyed: 0,
-  gameTime: 0
+  gameTime: 0,
+  combo: 1,
+  comboTimer: 0,
+  stage: 1,
+  flareActive: false,
+  flareTimer: 0,
+  nextFlareAt: 28,
+  finished: false
 };
 
 const groundGeometry = new THREE.PlaneGeometry(worldSize, worldSize, 34, 34);
@@ -715,11 +722,71 @@ function destroyEmitter(emitter) {
     1,
     state.uvIntensity + 0.035 + strength * 0.018
   );
-  state.score += Math.round(120 * strength);
+  if (state.comboTimer > 0) {
+    state.combo = Math.min(8, state.combo + 1);
+  } else {
+    state.combo = 1;
+  }
+
+  state.comboTimer = 6;
+  state.score += Math.round(120 * strength * state.combo);
   state.emittersDestroyed += 1;
 
   world.remove(emitter);
   updateHoleVisuals();
+}
+
+function getUvMultiplier() {
+  return state.flareActive ? 2 : 1;
+}
+
+function updateSession(delta) {
+  if (state.finished) return;
+
+  if (state.comboTimer > 0) {
+    state.comboTimer = Math.max(0, state.comboTimer - delta);
+
+    if (state.comboTimer === 0) {
+      state.combo = 1;
+    }
+  }
+
+  if (!state.flareActive && state.gameTime >= state.nextFlareAt) {
+    state.flareActive = true;
+    state.flareTimer = 10;
+    state.nextFlareAt = state.gameTime + 42;
+  }
+
+  if (state.flareActive) {
+    state.flareTimer = Math.max(0, state.flareTimer - delta);
+
+    if (state.flareTimer === 0) {
+      state.flareActive = false;
+    }
+  }
+
+  const previousStage = state.stage;
+
+  if (state.holeRadius >= 8.5) {
+    state.stage = 4;
+  } else if (state.holeRadius >= 6.5) {
+    state.stage = 3;
+  } else if (state.holeRadius >= 5.2) {
+    state.stage = 2;
+  } else {
+    state.stage = 1;
+  }
+
+  if (state.stage !== previousStage) {
+    state.score += state.stage * 250;
+  }
+
+  if (
+    state.emittersDestroyed === emitters.length ||
+    state.totalDamage >= 0.92
+  ) {
+    state.finished = true;
+  }
 }
 
 function paintBurnTrail(delta) {
@@ -736,9 +803,11 @@ function paintBurnTrail(delta) {
     radius
   );
 
+  const uvMultiplier = getUvMultiplier();
+
   const alpha = Math.min(
-    0.11,
-    0.015 + state.uvIntensity * delta * 0.8
+    0.16,
+    0.015 + state.uvIntensity * uvMultiplier * delta * 0.9
   );
 
   gradient.addColorStop(0, `rgba(83, 39, 20, ${alpha})`);
@@ -774,6 +843,7 @@ function damageTerrain(delta) {
         patch.userData.damage +
           delta *
             state.uvIntensity *
+            getUvMultiplier() *
             (0.15 + factor * 0.95)
       );
 
@@ -820,6 +890,7 @@ function damageTerrain(delta) {
       prop.userData.health -
         delta *
           state.uvIntensity *
+          getUvMultiplier() *
           (0.035 + exposure * 0.11)
     );
 
@@ -874,6 +945,7 @@ function damageTerrain(delta) {
         field.userData.health -
           delta *
             state.uvIntensity *
+            getUvMultiplier() *
             (0.055 + exposure * 0.18)
       );
 
@@ -909,6 +981,7 @@ function damageTerrain(delta) {
         lake.userData.water -
           delta *
             state.uvIntensity *
+            getUvMultiplier() *
             (0.01 + exposure * 0.045)
       );
 
@@ -1027,6 +1100,34 @@ function checkEmitters(delta) {
 }
 
 function updateHud() {
+  const stages = {
+    1: ['Stage 1 · Local breach', 'Absorb canisters and old AC units.'],
+    2: ['Stage 2 · District damage', 'Cold storage facilities are now within reach.'],
+    3: ['Stage 3 · Urban collapse', 'Factories can now be absorbed.'],
+    4: ['Stage 4 · Regional event', 'Industrial complexes are vulnerable.']
+  };
+
+  const stage = stages[state.stage];
+  const eventBanner = document.querySelector('#eventBanner');
+
+  document.querySelector('#stageValue').textContent =
+    state.finished ? 'Collapse complete' : stage[0];
+
+  document.querySelector('#objectiveText').textContent =
+    state.finished
+      ? 'All major sources neutralized or the surface is critically damaged.'
+      : stage[1];
+
+  document.querySelector('#comboValue').textContent =
+    `x${state.combo} combo`;
+
+  eventBanner.hidden = !state.flareActive;
+
+  if (state.flareActive) {
+    eventBanner.querySelector('span').textContent =
+      `UV output x2 · ${Math.ceil(state.flareTimer)}s`;
+  }
+
   document.querySelector('#holeValue').textContent =
     `${Math.round(state.holeRadius * 2)} m`;
 
@@ -1267,6 +1368,7 @@ function animate() {
   moveHole(delta);
   checkEmitters(delta);
   damageTerrain(delta);
+  updateSession(delta);
   updateCamera();
   updateHud();
 
