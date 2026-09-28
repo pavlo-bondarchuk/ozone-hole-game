@@ -78,9 +78,46 @@ const vehicles = [];
 const pedestrians = [];
 const smokePuffs = [];
 const regionalTargets = [];
+const continentalTargets = [];
+
 const regionalLayer = new THREE.Group();
 regionalLayer.visible = false;
 scene.add(regionalLayer);
+
+const continentalLayer = new THREE.Group();
+continentalLayer.visible = false;
+scene.add(continentalLayer);
+
+const continent = new THREE.Mesh(
+  new THREE.CircleGeometry(1, 96),
+  new THREE.MeshStandardMaterial({
+    color: 0x567b45,
+    roughness: 0.96,
+    metalness: 0.01,
+    transparent: true,
+    opacity: 0.92
+  })
+);
+
+continent.rotation.x = -Math.PI / 2;
+continent.position.y = -0.12;
+continent.scale.set(58, 1, 42);
+continentalLayer.add(continent);
+
+const coastalWater = new THREE.Mesh(
+  new THREE.RingGeometry(43, 67, 96),
+  new THREE.MeshBasicMaterial({
+    color: 0x397a9c,
+    transparent: true,
+    opacity: 0.5,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  })
+);
+
+coastalWater.rotation.x = -Math.PI / 2;
+coastalWater.position.y = -0.18;
+continentalLayer.add(coastalWater);
 const keys = new Set();
 const pointer = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
@@ -771,6 +808,62 @@ function createRegionalTarget(x, z, label, radius, strength, color) {
   regionalLayer.add(group);
 }
 
+function createContinentalTarget(x, z, label, radius, strength, color) {
+  const group = new THREE.Group();
+
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.76, radius, 1.5, 28),
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.68,
+      metalness: 0.22
+    })
+  );
+
+  base.position.y = 0.75;
+
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(radius * 0.28, 20, 14),
+    new THREE.MeshStandardMaterial({
+      color: 0xff9a72,
+      emissive: 0xff432e,
+      emissiveIntensity: 4.8,
+      roughness: 0.18
+    })
+  );
+
+  core.position.y = 1.9;
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(radius * 1.08, radius * 1.55, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0xff745c,
+      transparent: true,
+      opacity: 0.34,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.1;
+
+  const labelSprite = createLabel(label);
+  labelSprite.position.y = 4;
+
+  group.add(base, core, ring, labelSprite);
+  group.position.set(x, 0, z);
+  group.userData.label = label;
+  group.userData.radius = radius;
+  group.userData.strength = strength;
+  group.userData.alive = true;
+  group.userData.core = core;
+  group.userData.ring = ring;
+
+  continentalTargets.push(group);
+  continentalLayer.add(group);
+}
+
 const emitterTypes = {
   canister: {
     label: 'CFC canister',
@@ -897,6 +990,11 @@ function createEmitter(x, z, typeKey, scale = 1) {
 createRegionalTarget(-28, 30, 'Regional refrigeration hub', 2.2, 2.4, 0x6f7f89);
 createRegionalTarget(31, -30, 'Chemical logistics terminal', 2.5, 2.8, 0x7f6f68);
 createRegionalTarget(33, 31, 'Industrial megazone', 3.1, 3.5, 0x666a70);
+
+createContinentalTarget(-34, -28, 'Northern megacity cluster', 3.4, 4.2, 0x656c72);
+createContinentalTarget(2, -34, 'Continental cooling corridor', 3.7, 4.8, 0x5e737c);
+createContinentalTarget(34, 7, 'Heavy industry belt', 4, 5.2, 0x70665f);
+createContinentalTarget(-28, 22, 'Aerosol production network', 3.6, 4.6, 0x756b62);
 
 
 const atmosphereLayer = new THREE.Mesh(
@@ -1205,7 +1303,9 @@ function updateSession(delta) {
 
   const previousStage = state.stage;
 
-  if (state.holeRadius >= 8.5) {
+  if (state.holeRadius >= 11.2) {
+    state.stage = 5;
+  } else if (state.holeRadius >= 8.5) {
     state.stage = 4;
   } else if (state.holeRadius >= 6.5) {
     state.stage = 3;
@@ -1219,14 +1319,32 @@ function updateSession(delta) {
     state.score += state.stage * 250;
   }
 
-  regionalLayer.visible = state.stage >= 4;
+  regionalLayer.visible = state.stage >= 4 && state.stage < 5;
+  continentalLayer.visible = state.stage >= 5;
 
   const aliveRegionalTargets =
     regionalTargets.filter((target) => target.userData.alive).length;
 
+  const aliveContinentalTargets =
+    continentalTargets.filter((target) => target.userData.alive).length;
+
+  const localDetailVisible = state.stage < 5;
+
+  for (const vehicle of vehicles) {
+    vehicle.visible = localDetailVisible;
+  }
+
+  for (const person of pedestrians) {
+    person.visible = localDetailVisible;
+  }
+
   if (
-    (state.emittersDestroyed === emitters.length && aliveRegionalTargets === 0) ||
-    state.totalDamage >= 0.92
+    (
+      state.emittersDestroyed === emitters.length &&
+      aliveRegionalTargets === 0 &&
+      aliveContinentalTargets === 0
+    ) ||
+    state.totalDamage >= 0.96
   ) {
     state.finished = true;
   }
@@ -1806,12 +1924,58 @@ function updateRegionalTargets(delta) {
   }
 }
 
+function updateContinentalTargets(delta) {
+  if (!continentalLayer.visible) return;
+
+  for (const target of continentalTargets) {
+    if (!target.userData.alive) continue;
+
+    target.rotation.y += delta * 0.22;
+
+    const distance = Math.hypot(
+      target.position.x - holePosition.x,
+      target.position.z - holePosition.z
+    );
+
+    const canAbsorb =
+      state.stage >= 5 &&
+      state.holeRadius >= 11.2;
+
+    target.userData.ring.material.color.set(
+      canAbsorb ? 0xff7157 : 0x9d7bff
+    );
+
+    target.userData.core.material.emissive.set(
+      canAbsorb ? 0xff3e2a : 0x5630a3
+    );
+
+    if (
+      canAbsorb &&
+      distance < state.holeRadius * 0.76 + target.userData.radius
+    ) {
+      target.userData.alive = false;
+      target.visible = false;
+
+      state.holeRadius += 1.1 + target.userData.strength * 0.2;
+      state.uvRadius += 1.6 + target.userData.strength * 0.38;
+      state.uvIntensity = Math.min(
+        1,
+        state.uvIntensity + 0.075 + target.userData.strength * 0.018
+      );
+      state.score += Math.round(1600 * target.userData.strength);
+
+      updateHoleVisuals();
+    }
+  }
+}
+
 function updateHud() {
   const stages = {
     1: ['Stage 1 · Local breach', 'Absorb canisters and old AC units.'],
     2: ['Stage 2 · District damage', 'Cold storage facilities are now within reach.'],
     3: ['Stage 3 · Urban collapse', 'Factories can now be absorbed.'],
-    4: ['Stage 4 · Regional event', 'Regional industrial targets are now exposed.']
+    4: ['Stage 4 · Regional event', 'Regional industrial targets are now exposed.'],
+    5: ['Stage 5 · Continental collapse', 'Megacity and industrial networks are now vulnerable.']
   };
 
   const stage = stages[state.stage];
@@ -1977,7 +2141,8 @@ function updateCamera() {
     1: { height: 42, depth: 50, follow: 0.18 },
     2: { height: 50, depth: 59, follow: 0.15 },
     3: { height: 62, depth: 72, follow: 0.12 },
-    4: { height: 78, depth: 90, follow: 0.08 }
+    4: { height: 78, depth: 90, follow: 0.08 },
+    5: { height: 112, depth: 126, follow: 0.045 }
   };
 
   const config = stageZoom[state.stage];
@@ -2084,6 +2249,7 @@ function animate() {
   updateBuildingDamageEffects(delta);
   updateSmoke(delta);
   updateRegionalTargets(delta);
+  updateContinentalTargets(delta);
   updateSession(delta);
   updateCamera();
   updateHud();
